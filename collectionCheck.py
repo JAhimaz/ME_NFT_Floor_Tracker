@@ -6,6 +6,7 @@ import os
 # Selenium
 import undetected_chromedriver as uc
 from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -20,6 +21,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 load_dotenv()
+
+initialiseNewDB = False
+clearAllNFTs = False
 
 # def configureLogging():
 #     logFormatter = logging.Formatter("%(levelname)s - %(asctime)s --> %(message)s")
@@ -37,6 +41,13 @@ load_dotenv()
 
 # configureLogging()
 
+SYMBOLS = [
+    "<:minor_1:979342488915562576><:minor_2:979342488735211610><:minor_3:979342488777134080>", # Minor 
+    "<:medium_1:979343003497955328><:medium_2:979343003015581720><:medium_3:979343003690889216>", # Medium
+    "<:major_1:979343232402092072><:major_2:979343232125247529><:major_3:979343232041377864>", # Major
+    "<:extreme_1:979343381765451776><:extreme_2:979343382159700018><:extreme_3:979343382033858600>"  # Extreme
+    ]
+
 def setNFTData(data):
     nft = {
         'id' : data['id'],
@@ -50,6 +61,22 @@ def setNFTData(data):
     }
 
     return nft
+
+def getTelescanView(percentage):
+    val = abs(percentage)
+
+    if(val >= 0 and val < 5):
+        indication = SYMBOLS[0]
+    elif(val >= 5 and val < 10):
+        indication = SYMBOLS[1]
+    elif(val >= 10 and val < 25):
+        indication = SYMBOLS[2]
+    elif(val >= 25):
+        indication = SYMBOLS[3]
+    else:
+        indication = "Error"
+
+    return indication
 
 # Convert the collection name into an API URL
 def getAPIUrl(collection_name):
@@ -92,42 +119,72 @@ async def main(bot):
             channel = bot.get_channel(977522354341163018)
 
             if nft in storedNFTs:
-                return
+                print(f'No Changes to {nft["collection_name"]}')
+                continue
             else:
-                print(f'New NFT Floor of {nft["price"]} for {nft["collection_name"]}')
-                index = storedNFTs.index(next(filter(lambda n : n.get('collection_id') == nft['collection_id'], storedNFTs)))
-                indexedNft = storedNFTs[index]
-                # Compare Prices
-                percentageDifference = round(float(((nft['price'] - indexedNft['price']) / indexedNft['price']) * 100), 2)
-                
-            
-            # Test push NFT information
-            # insertNftToDB(nft)
+                try:
+                    index = storedNFTs.index(next(filter(lambda n : n.get('collection_id') == nft['collection_id'], storedNFTs)))
+                    indexedNft = storedNFTs[index]
 
-            # try:
-            embed = discord.Embed(
-                title = f'**{nft["name"]}**',
-                url=nft['magiceden_url'],
-                description = nft['collection_name'],
-                # This value will change depending on the price change
-                colour = discord.Colour.green() if percentageDifference >= 0 else discord.Colour.red()
-            )
+                    print(f'New NFT Floor of {nft["price"]} for {nft["collection_name"]}')
 
-            embed.set_image(url=nft['img_url'])
-            # embed.set_thumbnail(url=nft['img_url'])
-            embed.add_field(name='Price', value=f'{nft["price"]} SOL', inline=True)
-            embed.add_field(name='Value (%)', value=f'{percentageDifference}%', inline=True)
-            embed.add_field(name='Old Floor', value=f'{indexedNft["price"]} SOL', inline=False)
-            embed.set_footer(text='Powered by Telescan Bots https://discord.gg/gkangJkUKT')
+                    # Compare Prices
+                    percentageDifference = round(float(((nft['price'] - indexedNft['price']) / indexedNft['price']) * 100), 2)
+                    embedColour = discord.Colour.green() if percentageDifference >= 0 else discord.Colour.red()
+                    telescanView = getTelescanView(percentageDifference)
 
-            await channel.send(embed=embed)
-            # except:
-            #     print("ERROR: Unable to Send Message to Channel")
+                    # Database Functions
+                    deleteNft(indexedNft['collection_id'])
+                    insertNftToDB(nft)
+
+                    # List Functions
+                    del storedNFTs[index]
+                    storedNFTs.append(nft)
+
+                except:
+                    print(f"New Collection Found: {nft['collection_name']}")
+
+                    insertNftToDB(nft)
+                    storedNFTs.append(nft)
+                    indexedNft = {'price' : '-'}
+                    percentageDifference = "- "
+                    embedColour = discord.Colour.blue()
+                    telescanView = "-"
+
+            try:
+                embed = discord.Embed(
+                    title = f'**{nft["name"]}**',
+                    url=nft['magiceden_url'],
+                    description = nft['collection_name'],
+                    # This value will change depending on the price change
+                    colour = embedColour
+                )
+
+                embed.set_image(url=nft['img_url'])
+                embed.set_thumbnail(url='https://i.ibb.co/BN39Xk9/telescanlogo.gif')
+                embed.add_field(name='Price', value=f'{nft["price"]} SOL', inline=True)
+                embed.add_field(name='Old Floor', value=f'{indexedNft["price"]} SOL', inline=True)
+                embed.add_field(name='Value (%)', value=f'{percentageDifference}%', inline=True)
+                embed.add_field(name=":telescanlogo~1: Verdict", value=f'{telescanView}', inline=True)
+                embed.set_footer(text='Powered by Telescan Bots https://discord.gg/gkangJkUKT')
+
+                await channel.send(embed=embed)
+            except:
+                print("ERROR: Unable to Send Message to Channel")
         
-        await asyncio.sleep(5)
-        
+        await asyncio.sleep(10)
 
 if __name__ == '__main__':
+    if(initialiseNewDB):
+        initialiseTable()
+        print("Successfully Initialised The Database")
+        os._exit(0)
+    
+    if(clearAllNFTs):
+        clearNFTTable()
+        print("Successfully Deleted All NFTs on DB")
+        os._exit(0)
+
     # Set options for Chrome
     options = uc.ChromeOptions()
     options.headless=True

@@ -52,6 +52,16 @@ def insertNftToDB(nft):
         nft['mint_address'],
         nft['magiceden_url'],
     ))
+    # print("INFO: Successfully Inserted NFT")
+
+    conn.commit()
+    conn.close()
+
+def deleteNft(collection_id):
+    conn = sqlite3.connect('floornftdb.db')
+
+    conn.execute("DELETE FROM NFTFLOORPRICE WHERE COLLECTION_ID = ?", (collection_id,))
+    # print("INFO: Successfully Removed NFT")
 
     conn.commit()
     conn.close()
